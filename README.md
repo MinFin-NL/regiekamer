@@ -2,7 +2,7 @@
 
 A small demo of an AI organisation. You build an org chart of AI colleagues, assign them issues and watch them work: they wake up, claim an issue, work on it or delegate to their team, and book the cost against their own budget. You are the **board**: you approve hires, raise budgets and decide whatever sits above an agent's mandate. The organisation model (heartbeats, checkouts, board approvals) is borrowed from [Paperclip](https://github.com/paperclipai/paperclip) (MIT).
 
-The stack and deployment match invulhulp: FastAPI + Vue/NLDD, two containers on Azure Container Apps, Azure DevOps Pipelines, OpenTofu. The agents run on **Azure AI Foundry Agent Service**, on an Azure OpenAI chat model or a local Ollama model (both driven by [Pydantic AI](https://github.com/pydantic/pydantic-ai), MIT), or on a scripted mock that needs no model at all.
+The stack and deployment match invulhulp: FastAPI + Vue/NLDD, two containers on Azure Container Apps, Azure DevOps Pipelines. The agents run on **Azure AI Foundry Agent Service**, on an Azure OpenAI chat model or a local Ollama model (both driven by [Pydantic AI](https://github.com/pydantic/pydantic-ai), MIT), or on a scripted mock that needs no model at all.
 
 ## Concepts
 
@@ -124,25 +124,18 @@ Tests: `uv run pytest`. They cover hiring with and without approval, checkout co
 
 ## Deployment (same environment as invulhulp)
 
-- **`azure-pipelines.yml`** (app): builds `regiekamer-backend` and `regiekamer-frontend` into the ACR of `rg-regiekamer-inno-d` and deploys two Container Apps:
-  - the backend is internal, has 1 replica, and gets the `/data` Azure Files mount plus a system-assigned managed identity;
-  - the frontend is external, behind the same IP allowlist as invulhulp.
-- **`infra/`** (OpenTofu, same modules as `invulhulp-infra`): resource group, ACR, Log Analytics, Container Apps environment, storage, both apps, and the role assignment *Azure AI User* on the Foundry project. Pipeline: `infra/_ci/azure-pipelines-dev.yml`, with plan → approval (ADO environment `regiekamer-inno-d`) → apply.
+The Regiekamer runs next to invulhulp: same resource group (`rg-invulhulp-inno-d`), same ACR, same Container Apps environment (`cae-invulhulp-inno-d`), same firewall rules and the same Azure OpenAI model.
+
+- **`azure-pipelines.yml`** builds `regiekamer-backend` and `regiekamer-frontend` into the ACR of `rg-invulhulp-inno-d` and deploys two Container Apps into `cae-invulhulp-inno-d`:
+  - `ca-regiekamer-backend-inno-d` is internal and has 1 replica. It gets a `/data` Azure Files mount from its own storage account (`stregiekamerinnod`, share and mount `regiekamer-data`), so invulhulp's data is never touched. New hires default to the `chat` runtime on `gpt-5.3-chat` (API version `2025-04-01-preview`), the same deployment invulhulp uses;
+  - `ca-regiekamer-frontend-inno-d` is external, behind the same allowlist as invulhulp: the rules *DWR Next werkplekken* and *ITS*, with IPs from invulhulp's variable group.
 
 Setup, once:
 
-1. **Foundry:** create a Foundry project, deploy a model (`gpt-5-mini` is the default), and note the project endpoint and the project's resource id.
-2. **Variable group `regiekamer-secrets`:**
-   - `AZURE_SERVICE_CONNECTION`
-   - `ALLOWED_IP_1` and `ALLOWED_IP_2`
-   - `FOUNDRY_PROJECT_ENDPOINT` and `FOUNDRY_PROJECT_RESOURCE_ID`
-   - optionally `AZURE_OPENAI_ENDPOINT` and `AZURE_OPENAI_API_KEY` for the chat runtime
-3. **Service connection rights:** it needs Contributor on the subscription plus rights to create role assignments on the Foundry scope (*Role Based Access Control Administrator*). Without the latter, both pipelines print a warning, and you assign *Azure AI User* to the backend's managed identity by hand (`tofu output backend_principal_id`).
-4. Fill in `infra/envs/inno-d.tfvars` (subscription, IP ranges, Foundry values). Create the state storage using the commands in `infra/envs/inno-d.backend.hcl`.
-5. Register both pipelines in Azure DevOps. Run infra first, then the app pipeline.
+1. **Variable group `invulhulp-secrets`** (already exists): the pipeline reuses it for `AZURE_SERVICE_CONNECTION`, `ALLOWED_IP_1`, `ALLOWED_IP_2`, `AZURE_OPENAI_ENDPOINT` and `AZURE_OPENAI_API_KEY`. Authorize this pipeline to use it.
+2. Register `azure-pipelines.yml` as a pipeline in Azure DevOps and run it on `main`.
 
-Just like invulhulp, the app pipeline owns the image rollouts, so keep `image_tag = "latest"` in tfvars.
-
+Foundry is still supported in code, but this deployment doesn't configure it, because invulhulp has no Foundry project. To use it, add `FOUNDRY_PROJECT_ENDPOINT` to the backend and give its managed identity *Azure AI User* on the project.
 ## Known limitations of this demo
 
 - **Not tested against a real Foundry project yet.** The Foundry runtime follows `azure-ai-projects` 2.7 (the GA "v1" API) and is tested against a fake client. After the first deploy, check the following:

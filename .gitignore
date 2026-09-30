@@ -20,8 +20,3 @@ dist/
 
 # Local database
 data/
-
-# OpenTofu
-infra/.terraform/
-infra/*.tfplan
-infra/*.tfstate*
