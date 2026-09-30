@@ -132,8 +132,9 @@ The Regiekamer runs next to invulhulp: same resource group (`rg-invulhulp-inno-d
 
 Setup, once:
 
-1. **Variable group `invulhulp-secrets`** (already exists): the pipeline reuses it for `AZURE_SERVICE_CONNECTION`, `ALLOWED_IP_1`, `ALLOWED_IP_2`, `AZURE_OPENAI_ENDPOINT` and `AZURE_OPENAI_API_KEY`. Authorize this pipeline to use it.
-2. Register `azure-pipelines.yml` as a pipeline in Azure DevOps and run it on `main`.
+1. **Variable group `invulhulp-secrets`** (already exists): the pipeline reuses it for `AZURE_SERVICE_CONNECTION`, `ALLOWED_IP_1` and `ALLOWED_IP_2`. Authorize this pipeline to use it.
+2. **Variable group `kdai-secrets`** (already exists): the pipeline reuses `AZURE_OPENAI_ENDPOINT` and `AZURE_OPENAI_KEY` from it. That is the `oai-kdai-inno-d` resource, which hosts the same `gpt-5.3-chat` deployment. Authorize this pipeline to use it too.
+3. Register `azure-pipelines.yml` as a pipeline in Azure DevOps and run it on `main`.
 
 Foundry is still supported in code, but this deployment doesn't configure it, because invulhulp has no Foundry project. To use it, add `FOUNDRY_PROJECT_ENDPOINT` to the backend and give its managed identity *Azure AI User* on the project.
 ## Known limitations of this demo

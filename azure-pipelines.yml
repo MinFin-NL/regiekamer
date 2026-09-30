@@ -15,10 +15,12 @@ pool:
   name: alz-p-mgmt-we-ccoe-pool
 
 variables:
-  # invulhulp's variable group: AZURE_SERVICE_CONNECTION, the firewall IPs
-  # (ALLOWED_IP_1, ALLOWED_IP_2) and the Azure OpenAI endpoint/key
-  # (AZURE_OPENAI_ENDPOINT, AZURE_OPENAI_API_KEY), so both apps share one
-  # allowlist and one model.
+  # kdai's variable group: AZURE_OPENAI_ENDPOINT and AZURE_OPENAI_KEY of
+  # oai-kdai-inno-d, which hosts the gpt-5.3-chat deployment invulhulp uses.
+  - group: kdai-secrets
+  # invulhulp's variable group: AZURE_SERVICE_CONNECTION and the firewall IPs
+  # (ALLOWED_IP_1, ALLOWED_IP_2), so both frontends share one allowlist.
+  # Listed last so its AZURE_SERVICE_CONNECTION wins over kdai's.
   - group: invulhulp-secrets
   - name: BACKEND_IMAGE
     value: regiekamer-backend
@@ -32,16 +34,12 @@ variables:
     value: ca-regiekamer-backend-inno-d
   - name: FRONTEND_APP
     value: ca-regiekamer-frontend-inno-d
-  # SQLite lives on an Azure Files share mounted at /data. One backend replica
-  # only: SQLite + SMB has no cross-process locking (journal_mode=DELETE).
-  # Own storage account and mount name, so it never touches invulhulp's data.
   - name: STORAGE_ACCOUNT
     value: stregiekamerinnod
   - name: FILE_SHARE
     value: regiekamer-data
   - name: STORAGE_MOUNT_NAME
     value: regiekamer-data
-  # Same deployment and API version as invulhulp's backend.
   - name: AZURE_OPENAI_DEPLOYMENT
     value: gpt-5.3-chat
   - name: AZURE_OPENAI_API_VERSION
@@ -165,9 +163,9 @@ stages:
               AGENT_RUNTIME_DEFAULT: $(AGENT_RUNTIME_DEFAULT)
               AZURE_OPENAI_DEPLOYMENT: $(AZURE_OPENAI_DEPLOYMENT)
               AZURE_OPENAI_API_VERSION: $(AZURE_OPENAI_API_VERSION)
-              # From the invulhulp-secrets variable group.
+              # From the kdai-secrets variable group.
               AZURE_OPENAI_ENDPOINT: $(AZURE_OPENAI_ENDPOINT)
-              AZURE_OPENAI_API_KEY: $(AZURE_OPENAI_API_KEY)
+              AZURE_OPENAI_API_KEY: $(AZURE_OPENAI_KEY)
             inputs:
               azureSubscription: $(AZURE_SERVICE_CONNECTION)
               scriptType: bash
@@ -184,7 +182,7 @@ stages:
                 AZURE_OPENAI_ENDPOINT=$(clean "$AZURE_OPENAI_ENDPOINT")
                 AZURE_OPENAI_API_KEY=$(clean "$AZURE_OPENAI_API_KEY")
                 if [ -z "$AZURE_OPENAI_ENDPOINT" ] || [ -z "$AZURE_OPENAI_API_KEY" ]; then
-                  echo "##[error]AZURE_OPENAI_ENDPOINT / AZURE_OPENAI_API_KEY missing from the invulhulp-secrets variable group." >&2
+                  echo "##[error]AZURE_OPENAI_ENDPOINT / AZURE_OPENAI_KEY missing from the kdai-secrets variable group." >&2
                   exit 1
                 fi
 
