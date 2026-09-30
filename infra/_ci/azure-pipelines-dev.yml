@@ -1,0 +1,156 @@
+# Infrastructure pipeline for the inno-d (development) environment.
+#
+# Plan on every push to main, apply only after a human approves the
+# "regiekamer-inno-d" environment in Azure DevOps. The Apply stage applies the
+# exact plan file the Plan stage produced, so what is reviewed is what runs.
+#
+# This pipeline owns the infrastructure; azure-pipelines.yml at the repo root
+# owns the images. Keep image_tag = "latest" in envs/inno-d.tfvars while that is
+# the case. Register this file as a second pipeline in Azure DevOps.
+
+trigger:
+  branches:
+    include:
+      - main
+  paths:
+    include:
+      - infra
+
+pr:
+  branches:
+    include:
+      - main
+  paths:
+    include:
+      - infra
+
+pool:
+  name: alz-p-mgmt-we-ccoe-pool
+
+variables:
+  # AZURE_SERVICE_CONNECTION, and the secrets consumed as TF_VAR_* below.
+  - group: regiekamer-secrets
+  - name: TF_ENV
+    value: inno-d
+  - name: TOFU_VERSION
+    value: 1.12.5
+  # OpenTofu needs no colour codes or prompts on a build agent.
+  - name: TF_IN_AUTOMATION
+    value: "true"
+  - name: TF_INPUT
+    value: "0"
+
+stages:
+  - stage: Plan
+    displayName: Validate and plan
+    jobs:
+      - job: Plan
+        displayName: tofu plan (inno-d)
+        steps:
+          - template: steps-install-tofu.yml
+
+          - task: AzureCLI@2
+            displayName: tofu init, fmt, validate
+            inputs:
+              azureSubscription: $(AZURE_SERVICE_CONNECTION)
+              scriptType: bash
+              scriptLocation: inlineScript
+              # Hands the service principal to the provider and to the azuread
+              # auth the state backend uses.
+              addSpnToEnvironment: true
+              workingDirectory: $(Build.SourcesDirectory)/infra
+              inlineScript: |
+                set -euo pipefail
+                export ARM_CLIENT_ID="$servicePrincipalId"
+                export ARM_CLIENT_SECRET="$servicePrincipalKey"
+                export ARM_TENANT_ID="$tenantId"
+                export ARM_SUBSCRIPTION_ID=$(az account show --query id -o tsv)
+
+                tofu init -reconfigure -backend-config="envs/${TF_ENV}.backend.hcl"
+                # A formatting diff is a failure, not a warning: it means the
+                # committed config was never run through `make fmt`.
+                tofu fmt -check -recursive
+                tofu validate
+
+          - task: AzureCLI@2
+            displayName: tofu plan
+            env:
+              # Never put these in envs/*.tfvars — they would be committed.
+              TF_VAR_azure_openai_endpoint: $(AZURE_OPENAI_ENDPOINT)
+              TF_VAR_azure_openai_api_key: $(AZURE_OPENAI_API_KEY)
+            inputs:
+              azureSubscription: $(AZURE_SERVICE_CONNECTION)
+              scriptType: bash
+              scriptLocation: inlineScript
+              addSpnToEnvironment: true
+              workingDirectory: $(Build.SourcesDirectory)/infra
+              inlineScript: |
+                set -euo pipefail
+                export ARM_CLIENT_ID="$servicePrincipalId"
+                export ARM_CLIENT_SECRET="$servicePrincipalKey"
+                export ARM_TENANT_ID="$tenantId"
+                export ARM_SUBSCRIPTION_ID=$(az account show --query id -o tsv)
+
+                tofu plan \
+                  -var-file="envs/${TF_ENV}.tfvars" \
+                  -out="$(Build.ArtifactStagingDirectory)/${TF_ENV}.tfplan"
+
+                # Human-readable copy for the approver; the binary plan is what
+                # actually gets applied.
+                tofu show -no-color "$(Build.ArtifactStagingDirectory)/${TF_ENV}.tfplan" \
+                  > "$(Build.ArtifactStagingDirectory)/${TF_ENV}.plan.txt"
+
+          - publish: $(Build.ArtifactStagingDirectory)
+            artifact: tfplan-$(TF_ENV)
+            displayName: Publish plan
+
+  - stage: Apply
+    displayName: Apply to inno-d
+    dependsOn: Plan
+    # Only main applies; a PR build stops after the plan.
+    condition: and(succeeded(), eq(variables['Build.SourceBranch'], 'refs/heads/main'))
+    jobs:
+      - deployment: Apply
+        displayName: tofu apply (inno-d)
+        # Attach an approval check to this environment in Azure DevOps —
+        # without one, main applies unattended.
+        environment: regiekamer-inno-d
+        strategy:
+          runOnce:
+            deploy:
+              steps:
+                - checkout: self
+
+                - template: steps-install-tofu.yml
+
+                - download: current
+                  artifact: tfplan-$(TF_ENV)
+                  displayName: Download plan
+
+                - task: AzureCLI@2
+                  displayName: tofu apply
+                  inputs:
+                    azureSubscription: $(AZURE_SERVICE_CONNECTION)
+                    scriptType: bash
+                    scriptLocation: inlineScript
+                    addSpnToEnvironment: true
+                    workingDirectory: $(Build.SourcesDirectory)/infra
+                    inlineScript: |
+                      set -euo pipefail
+                      export ARM_CLIENT_ID="$servicePrincipalId"
+                      export ARM_CLIENT_SECRET="$servicePrincipalKey"
+                      export ARM_TENANT_ID="$tenantId"
+                      export ARM_SUBSCRIPTION_ID=$(az account show --query id -o tsv)
+
+                      tofu init -reconfigure -backend-config="envs/${TF_ENV}.backend.hcl"
+
+                      # Applying the saved plan needs no -var-file and no
+                      # TF_VAR_* secrets: the values are already inside it.
+                      tofu apply -auto-approve \
+                        "$(Pipeline.Workspace)/tfplan-${TF_ENV}/${TF_ENV}.tfplan"
+
+                      tofu output -json > "$(Build.ArtifactStagingDirectory)/outputs.json"
+
+                - publish: $(Build.ArtifactStagingDirectory)/outputs.json
+                  artifact: tofu-outputs-$(TF_ENV)
+                  displayName: Publish outputs

@@ -1,0 +1,9 @@
+FROM python:3.13-slim
+RUN pip install --no-cache-dir uv
+WORKDIR /app
+COPY pyproject.toml uv.lock ./
+RUN uv sync --frozen --no-dev
+COPY backend/*.py ./
+COPY backend/runtimes ./runtimes
+EXPOSE 8000
+CMD ["uv", "run", "--no-dev", "uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000"]

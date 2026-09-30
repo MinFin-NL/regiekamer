@@ -1,0 +1,360 @@
+# Same shape as invulhulp's pipeline: build both images into the resource
+# group's ACR, then roll out to Azure Container Apps (backend internal,
+# frontend external behind an IP allowlist). The resource group, ACR and
+# Container Apps environment come from infra/ (OpenTofu) and must exist first.
+trigger:
+  branches:
+    include:
+      - main
+  paths:
+    exclude:
+      - infra
+      - README.md
+
+pool:
+  name: alz-p-mgmt-we-ccoe-pool
+
+variables:
+  # Provides AZURE_SERVICE_CONNECTION, ALLOWED_IP_1, ALLOWED_IP_2,
+  # FOUNDRY_PROJECT_ENDPOINT, FOUNDRY_PROJECT_RESOURCE_ID and (optionally, for
+  # the "chat" runtime) AZURE_OPENAI_ENDPOINT / AZURE_OPENAI_API_KEY.
+  - group: regiekamer-secrets
+  - name: BACKEND_IMAGE
+    value: regiekamer-backend
+  - name: FRONTEND_IMAGE
+    value: regiekamer-frontend
+  - name: RESOURCE_GROUP
+    value: rg-regiekamer-inno-d
+  - name: CONTAINER_APP_ENV
+    value: cae-regiekamer-inno-d
+  - name: BACKEND_APP
+    value: ca-regiekamer-backend-inno-d
+  - name: FRONTEND_APP
+    value: ca-regiekamer-frontend-inno-d
+  # SQLite lives on an Azure Files share mounted at /data. One backend replica
+  # only: SQLite + SMB has no cross-process locking (journal_mode=DELETE).
+  - name: STORAGE_ACCOUNT
+    value: stregiekamerinnod
+  - name: FILE_SHARE
+    value: regiekamer-data
+  - name: STORAGE_MOUNT_NAME
+    value: regiekamer-data
+  - name: FOUNDRY_MODEL_DEPLOYMENT
+    value: gpt-5-mini
+  - name: AZURE_OPENAI_DEPLOYMENT
+    value: gpt-5.3-chat
+  - name: AGENT_RUNTIME_DEFAULT
+    value: foundry
+
+stages:
+  - stage: Build
+    displayName: Build and push images
+    jobs:
+      - job: Build
+        displayName: Docker build and push to ACR
+        steps:
+          - task: AzureCLI@2
+            displayName: Build and push backend
+            env:
+              IMAGE_TAG: $(Build.SourceVersion)
+              BACKEND_IMAGE: $(BACKEND_IMAGE)
+              RESOURCE_GROUP: $(RESOURCE_GROUP)
+            inputs:
+              azureSubscription: $(AZURE_SERVICE_CONNECTION)
+              scriptType: bash
+              scriptLocation: inlineScript
+              inlineScript: |
+                set -euo pipefail
+                ACR_LOGIN_SERVER=$(az acr list --resource-group "$RESOURCE_GROUP" --query "[0].loginServer" -o tsv)
+                az acr login --name "${ACR_LOGIN_SERVER%%.*}"
+                docker build -f Dockerfile.backend \
+                  -t "$ACR_LOGIN_SERVER/$BACKEND_IMAGE:$IMAGE_TAG" \
+                  -t "$ACR_LOGIN_SERVER/$BACKEND_IMAGE:latest" .
+                docker push "$ACR_LOGIN_SERVER/$BACKEND_IMAGE:$IMAGE_TAG"
+                docker push "$ACR_LOGIN_SERVER/$BACKEND_IMAGE:latest"
+
+          - task: AzureCLI@2
+            displayName: Build and push frontend
+            env:
+              IMAGE_TAG: $(Build.SourceVersion)
+              FRONTEND_IMAGE: $(FRONTEND_IMAGE)
+              RESOURCE_GROUP: $(RESOURCE_GROUP)
+            inputs:
+              azureSubscription: $(AZURE_SERVICE_CONNECTION)
+              scriptType: bash
+              scriptLocation: inlineScript
+              inlineScript: |
+                set -euo pipefail
+                ACR_LOGIN_SERVER=$(az acr list --resource-group "$RESOURCE_GROUP" --query "[0].loginServer" -o tsv)
+                az acr login --name "${ACR_LOGIN_SERVER%%.*}"
+                docker build -f Dockerfile.frontend \
+                  -t "$ACR_LOGIN_SERVER/$FRONTEND_IMAGE:$IMAGE_TAG" \
+                  -t "$ACR_LOGIN_SERVER/$FRONTEND_IMAGE:latest" .
+                docker push "$ACR_LOGIN_SERVER/$FRONTEND_IMAGE:$IMAGE_TAG"
+                docker push "$ACR_LOGIN_SERVER/$FRONTEND_IMAGE:latest"
+
+  - stage: Deploy
+    displayName: Deploy to Container Apps
+    dependsOn: Build
+    # Only main deploys; PR runs build images but never touch the apps.
+    condition: and(succeeded(), eq(variables['Build.SourceBranch'], 'refs/heads/main'))
+    jobs:
+      - job: Deploy
+        displayName: Deploy backend and frontend
+        steps:
+          - task: AzureCLI@2
+            displayName: Provision persistent storage
+            env:
+              RESOURCE_GROUP: $(RESOURCE_GROUP)
+              CONTAINER_APP_ENV: $(CONTAINER_APP_ENV)
+              STORAGE_ACCOUNT: $(STORAGE_ACCOUNT)
+              FILE_SHARE: $(FILE_SHARE)
+              STORAGE_MOUNT_NAME: $(STORAGE_MOUNT_NAME)
+            inputs:
+              azureSubscription: $(AZURE_SERVICE_CONNECTION)
+              scriptType: bash
+              scriptLocation: inlineScript
+              inlineScript: |
+                set -euo pipefail
+                LOCATION=$(az group show --name "$RESOURCE_GROUP" --query location -o tsv)
+
+                # Idempotent: create returns the existing account unchanged.
+                az storage account create \
+                  --name "$STORAGE_ACCOUNT" \
+                  --resource-group "$RESOURCE_GROUP" \
+                  --location "$LOCATION" \
+                  --sku Standard_LRS \
+                  --kind StorageV2 \
+                  --min-tls-version TLS1_2 \
+                  --output none
+
+                STORAGE_KEY=$(az storage account keys list \
+                  --account-name "$STORAGE_ACCOUNT" \
+                  --resource-group "$RESOURCE_GROUP" \
+                  --query "[0].value" -o tsv)
+
+                az storage share-rm create \
+                  --storage-account "$STORAGE_ACCOUNT" \
+                  --resource-group "$RESOURCE_GROUP" \
+                  --name "$FILE_SHARE" \
+                  --quota 4 \
+                  --output none
+
+                az containerapp env storage set \
+                  --name "$CONTAINER_APP_ENV" \
+                  --resource-group "$RESOURCE_GROUP" \
+                  --storage-name "$STORAGE_MOUNT_NAME" \
+                  --azure-file-account-name "$STORAGE_ACCOUNT" \
+                  --azure-file-account-key "$STORAGE_KEY" \
+                  --azure-file-share-name "$FILE_SHARE" \
+                  --access-mode ReadWrite \
+                  --output none
+
+          - task: AzureCLI@2
+            displayName: Deploy backend
+            env:
+              IMAGE_TAG: $(Build.SourceVersion)
+              BACKEND_IMAGE: $(BACKEND_IMAGE)
+              BACKEND_APP: $(BACKEND_APP)
+              RESOURCE_GROUP: $(RESOURCE_GROUP)
+              CONTAINER_APP_ENV: $(CONTAINER_APP_ENV)
+              STORAGE_MOUNT_NAME: $(STORAGE_MOUNT_NAME)
+              AGENT_RUNTIME_DEFAULT: $(AGENT_RUNTIME_DEFAULT)
+              FOUNDRY_MODEL_DEPLOYMENT: $(FOUNDRY_MODEL_DEPLOYMENT)
+              AZURE_OPENAI_DEPLOYMENT: $(AZURE_OPENAI_DEPLOYMENT)
+              # From the regiekamer-secrets variable group.
+              FOUNDRY_PROJECT_ENDPOINT: $(FOUNDRY_PROJECT_ENDPOINT)
+              FOUNDRY_PROJECT_RESOURCE_ID: $(FOUNDRY_PROJECT_RESOURCE_ID)
+              AZURE_OPENAI_ENDPOINT: $(AZURE_OPENAI_ENDPOINT)
+              AZURE_OPENAI_API_KEY: $(AZURE_OPENAI_API_KEY)
+            inputs:
+              azureSubscription: $(AZURE_SERVICE_CONNECTION)
+              scriptType: bash
+              scriptLocation: inlineScript
+              inlineScript: |
+                set -euo pipefail
+                ACR_LOGIN_SERVER=$(az acr list --resource-group "$RESOURCE_GROUP" --query "[0].loginServer" -o tsv)
+                ACR_NAME="${ACR_LOGIN_SERVER%%.*}"
+                ACR_USER=$(az acr credential show --name "$ACR_NAME" --query username -o tsv)
+                ACR_PASS=$(az acr credential show --name "$ACR_NAME" --query "passwords[0].value" -o tsv)
+
+                # An unset ADO variable expands to the literal "$(NAME)"; treat that as empty.
+                clean() { case "$1" in '$('*) echo "";; *) echo "$1";; esac; }
+                FOUNDRY_PROJECT_ENDPOINT=$(clean "$FOUNDRY_PROJECT_ENDPOINT")
+                FOUNDRY_PROJECT_RESOURCE_ID=$(clean "$FOUNDRY_PROJECT_RESOURCE_ID")
+                AZURE_OPENAI_ENDPOINT=$(clean "$AZURE_OPENAI_ENDPOINT")
+                AZURE_OPENAI_API_KEY=$(clean "$AZURE_OPENAI_API_KEY")
+
+                ENV_VARS=(
+                  "DB_PATH=/data/regiekamer.db"
+                  "CORS_ORIGINS=*"
+                  "AGENT_RUNTIME_DEFAULT=${AGENT_RUNTIME_DEFAULT}"
+                  "FOUNDRY_PROJECT_ENDPOINT=${FOUNDRY_PROJECT_ENDPOINT}"
+                  "FOUNDRY_MODEL_DEPLOYMENT=${FOUNDRY_MODEL_DEPLOYMENT}"
+                  "AZURE_OPENAI_ENDPOINT=secretref:openai-endpoint"
+                  "AZURE_OPENAI_API_KEY=secretref:openai-api-key"
+                  "AZURE_OPENAI_DEPLOYMENT=${AZURE_OPENAI_DEPLOYMENT}"
+                  "AZURE_OPENAI_API_VERSION=2025-04-01-preview"
+                )
+                SECRETS=(
+                  "openai-endpoint=${AZURE_OPENAI_ENDPOINT}"
+                  "openai-api-key=${AZURE_OPENAI_API_KEY}"
+                )
+
+                if az containerapp show --name "$BACKEND_APP" --resource-group "$RESOURCE_GROUP" &>/dev/null; then
+                  az containerapp secret set \
+                    --name "$BACKEND_APP" \
+                    --resource-group "$RESOURCE_GROUP" \
+                    --secrets "${SECRETS[@]}" \
+                    --output none
+                  az containerapp update \
+                    --name "$BACKEND_APP" \
+                    --resource-group "$RESOURCE_GROUP" \
+                    --image "$ACR_LOGIN_SERVER/$BACKEND_IMAGE:$IMAGE_TAG" \
+                    --min-replicas 1 \
+                    --max-replicas 1 \
+                    --set-env-vars "${ENV_VARS[@]}" \
+                    --output none
+                else
+                  az containerapp create \
+                    --name "$BACKEND_APP" \
+                    --resource-group "$RESOURCE_GROUP" \
+                    --environment "$CONTAINER_APP_ENV" \
+                    --image "$ACR_LOGIN_SERVER/$BACKEND_IMAGE:$IMAGE_TAG" \
+                    --registry-server "$ACR_LOGIN_SERVER" \
+                    --registry-username "$ACR_USER" \
+                    --registry-password "$ACR_PASS" \
+                    --ingress internal \
+                    --target-port 8000 \
+                    --env-vars "${ENV_VARS[@]}" \
+                    --secrets "${SECRETS[@]}" \
+                    --cpu 0.5 --memory 1.0Gi \
+                    --min-replicas 1 --max-replicas 1 \
+                    --output none
+                fi
+
+                # Managed identity for Foundry Agent Service (Entra ID only, no
+                # API keys). DefaultAzureCredential in the app picks it up.
+                PRINCIPAL_ID=$(az containerapp identity assign \
+                  --name "$BACKEND_APP" \
+                  --resource-group "$RESOURCE_GROUP" \
+                  --system-assigned \
+                  --query principalId -o tsv)
+                if [ -n "$FOUNDRY_PROJECT_RESOURCE_ID" ]; then
+                  # Needs Role Based Access Control Administrator (or UAA) for the
+                  # service connection on the Foundry scope; infra/ does the same
+                  # declaratively. Don't fail the rollout if it lacks that right.
+                  az role assignment create \
+                    --assignee-object-id "$PRINCIPAL_ID" \
+                    --assignee-principal-type ServicePrincipal \
+                    --role "Azure AI User" \
+                    --scope "$FOUNDRY_PROJECT_RESOURCE_ID" \
+                    --output none \
+                  || echo "##[warning]Could not assign 'Azure AI User' to $PRINCIPAL_ID on the Foundry project; assign it manually."
+                else
+                  echo "##[warning]FOUNDRY_PROJECT_RESOURCE_ID not set; assign 'Azure AI User' to $PRINCIPAL_ID manually."
+                fi
+
+                # Mount the Azure Files share at /data. The CLI has no flag for
+                # volume mounts, so patch the app definition via --yaml.
+                az containerapp show \
+                  --name "$BACKEND_APP" \
+                  --resource-group "$RESOURCE_GROUP" \
+                  -o json > /tmp/backend-app.json
+                python3 - "$STORAGE_MOUNT_NAME" <<'PY'
+                import json, sys
+                mount_name = sys.argv[1]
+                with open("/tmp/backend-app.json") as f:
+                    app = json.load(f)
+                template = app["properties"]["template"]
+                template["volumes"] = [
+                    {"name": "data", "storageName": mount_name, "storageType": "AzureFile"}
+                ]
+                for container in template["containers"]:
+                    container["volumeMounts"] = [{"volumeName": "data", "mountPath": "/data"}]
+                with open("/tmp/backend-app.json", "w") as f:
+                    json.dump(app, f)
+                PY
+                az containerapp update \
+                  --name "$BACKEND_APP" \
+                  --resource-group "$RESOURCE_GROUP" \
+                  --yaml /tmp/backend-app.json \
+                  --output none
+
+          - task: AzureCLI@2
+            displayName: Deploy frontend
+            env:
+              IMAGE_TAG: $(Build.SourceVersion)
+              FRONTEND_IMAGE: $(FRONTEND_IMAGE)
+              FRONTEND_APP: $(FRONTEND_APP)
+              BACKEND_APP: $(BACKEND_APP)
+              RESOURCE_GROUP: $(RESOURCE_GROUP)
+              CONTAINER_APP_ENV: $(CONTAINER_APP_ENV)
+            inputs:
+              azureSubscription: $(AZURE_SERVICE_CONNECTION)
+              scriptType: bash
+              scriptLocation: inlineScript
+              inlineScript: |
+                set -euo pipefail
+                ACR_LOGIN_SERVER=$(az acr list --resource-group "$RESOURCE_GROUP" --query "[0].loginServer" -o tsv)
+                ACR_NAME="${ACR_LOGIN_SERVER%%.*}"
+                ACR_USER=$(az acr credential show --name "$ACR_NAME" --query username -o tsv)
+                ACR_PASS=$(az acr credential show --name "$ACR_NAME" --query "passwords[0].value" -o tsv)
+
+                BACKEND_FQDN=$(az containerapp show \
+                  --name "$BACKEND_APP" \
+                  --resource-group "$RESOURCE_GROUP" \
+                  --query "properties.configuration.ingress.fqdn" -o tsv)
+                BACKEND_URL="https://${BACKEND_FQDN}"
+
+                if az containerapp show --name "$FRONTEND_APP" --resource-group "$RESOURCE_GROUP" &>/dev/null; then
+                  az containerapp update \
+                    --name "$FRONTEND_APP" \
+                    --resource-group "$RESOURCE_GROUP" \
+                    --image "$ACR_LOGIN_SERVER/$FRONTEND_IMAGE:$IMAGE_TAG" \
+                    --min-replicas 1 \
+                    --set-env-vars "BACKEND_URL=${BACKEND_URL}" \
+                    --output none
+                else
+                  az containerapp create \
+                    --name "$FRONTEND_APP" \
+                    --resource-group "$RESOURCE_GROUP" \
+                    --environment "$CONTAINER_APP_ENV" \
+                    --image "$ACR_LOGIN_SERVER/$FRONTEND_IMAGE:$IMAGE_TAG" \
+                    --registry-server "$ACR_LOGIN_SERVER" \
+                    --registry-username "$ACR_USER" \
+                    --registry-password "$ACR_PASS" \
+                    --ingress external \
+                    --target-port 80 \
+                    --env-vars "BACKEND_URL=${BACKEND_URL}" \
+                    --cpu 0.25 --memory 0.5Gi \
+                    --min-replicas 1 --max-replicas 2 \
+                    --output none
+                fi
+
+          - task: AzureCLI@2
+            displayName: Apply firewall rules to frontend
+            env:
+              FRONTEND_APP: $(FRONTEND_APP)
+              RESOURCE_GROUP: $(RESOURCE_GROUP)
+              ALLOWED_IP_1: $(ALLOWED_IP_1)
+              ALLOWED_IP_2: $(ALLOWED_IP_2)
+            inputs:
+              azureSubscription: $(AZURE_SERVICE_CONNECTION)
+              scriptType: bash
+              scriptLocation: inlineScript
+              inlineScript: |
+                set -euo pipefail
+                # No login in this demo: the IP allowlist is the only gate.
+                az containerapp ingress access-restriction set \
+                  --name "$FRONTEND_APP" \
+                  --resource-group "$RESOURCE_GROUP" \
+                  --rule-name "DWR Next werkplekken" \
+                  --ip-address "$ALLOWED_IP_1" \
+                  --action Allow
+                az containerapp ingress access-restriction set \
+                  --name "$FRONTEND_APP" \
+                  --resource-group "$RESOURCE_GROUP" \
+                  --rule-name "ITS" \
+                  --ip-address "$ALLOWED_IP_2" \
+                  --action Allow

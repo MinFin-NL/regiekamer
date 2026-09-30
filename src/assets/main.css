@@ -1,0 +1,899 @@
+/* NLDD design system: fonts, reset and tokens on :root (same setup as invulhulp).
+   The app's own layer maps NLDD semantics to a few names it reasons in. */
+@import '@nldd/design-system/styles';
+
+:root {
+  --rk-bg: var(--semantics-surfaces-tinted-background-color, #f3f5f8);
+  --rk-surface: var(--semantics-surfaces-base-background-color, #fff);
+  --rk-border: var(--semantics-dividers-color, #d6dbe3);
+  --rk-text: var(--semantics-content-color, #1a1a1a);
+  --rk-muted: var(--semantics-content-secondary-color, #5c6470);
+  --rk-accent: var(--semantics-content-accent-color, #154273);
+  --rk-success: var(--semantics-content-success-color, #2b7a3d);
+  --rk-warning: #c77700;
+  --rk-critical: var(--semantics-content-critical-color, #c0282d);
+  --rk-radius: 10px;
+  --rk-gap: 16px;
+  --rk-duration: 150ms;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  :root {
+    --rk-duration: 1ms;
+  }
+}
+
+body {
+  margin: 0;
+  background: var(--rk-bg);
+  color: var(--rk-text);
+  font-family: var(--primitives-font-family-body);
+}
+
+h1,
+h2 {
+  font-family: var(--primitives-font-family-display, var(--primitives-font-family-body));
+}
+
+.rk-main {
+  max-width: 1320px;
+  margin: 0 auto;
+  padding: 24px 16px 64px;
+}
+
+.rk-page {
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+}
+
+.rk-page__header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: var(--rk-gap);
+  flex-wrap: wrap;
+}
+
+h1,
+h2,
+h3 {
+  margin: 0 0 8px;
+}
+
+h1 {
+  font-size: 1.75rem;
+}
+h2 {
+  font-size: 1.15rem;
+}
+h3 {
+  font-size: 1rem;
+  margin-top: 16px;
+}
+
+p {
+  margin: 0 0 8px;
+}
+
+a {
+  color: var(--rk-accent);
+}
+
+.rk-muted {
+  color: var(--rk-muted);
+  font-size: 0.9em;
+}
+
+.rk-eyebrow {
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  font-size: 0.75rem;
+  color: var(--rk-muted);
+  margin: 0 0 4px;
+}
+
+.rk-big {
+  font-size: 2rem;
+  font-weight: 700;
+  line-height: 1.1;
+  margin: 0;
+}
+
+.rk-lead {
+  font-size: 1.1rem;
+  max-width: 60ch;
+}
+
+.rk-panel {
+  background: var(--rk-surface);
+  border: 1px solid var(--rk-border);
+  border-radius: var(--rk-radius);
+  padding: 20px;
+}
+
+.rk-columns {
+  display: grid;
+  grid-template-columns: minmax(0, 3fr) minmax(0, 2fr);
+  gap: var(--rk-gap);
+  align-items: start;
+}
+
+@media (max-width: 900px) {
+  .rk-columns {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* ── Dashboard ─────────────────────────────────────────────────────────── */
+
+.rk-hero {
+  display: flex;
+  justify-content: space-between;
+  gap: 32px;
+  flex-wrap: wrap;
+  padding: 28px;
+  border-radius: var(--rk-radius);
+  background: linear-gradient(135deg, #154273 0%, #01689b 100%);
+  color: #fff;
+}
+
+.rk-hero .rk-eyebrow {
+  color: rgb(255 255 255 / 0.75);
+}
+
+.rk-hero__budget {
+  min-width: 240px;
+}
+
+.rk-hero .rk-budget__bar {
+  background: rgb(255 255 255 / 0.25);
+}
+
+.rk-hero .rk-budget__label {
+  color: rgb(255 255 255 / 0.85);
+}
+
+.rk-stats {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: var(--rk-gap);
+}
+
+.rk-stat {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  align-items: flex-start;
+  padding: 16px 20px;
+  border: 1px solid var(--rk-border);
+  border-radius: var(--rk-radius);
+  background: var(--rk-surface);
+  cursor: pointer;
+  font: inherit;
+  color: inherit;
+  text-align: left;
+}
+
+.rk-stat:hover {
+  border-color: var(--rk-accent);
+}
+
+.rk-stat--alert {
+  border-color: var(--rk-warning);
+  box-shadow: inset 4px 0 0 var(--rk-warning);
+}
+
+.rk-feed {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  max-height: 560px;
+  overflow-y: auto;
+}
+
+.rk-feed__item {
+  display: grid;
+  grid-template-columns: 28px 1fr auto;
+  gap: 8px;
+  padding: 8px 0;
+  border-bottom: 1px solid var(--rk-border);
+  align-items: baseline;
+}
+
+.rk-feed__item--run {
+  background: color-mix(in srgb, var(--rk-accent) 4%, transparent);
+}
+
+.rk-feed__item--approval,
+.rk-feed__item--budget {
+  background: color-mix(in srgb, var(--rk-warning) 8%, transparent);
+}
+
+.rk-feed__text {
+  overflow-wrap: anywhere;
+}
+
+.rk-steps {
+  padding-left: 20px;
+}
+
+.rk-steps li {
+  margin-bottom: 8px;
+}
+
+.rk-toggle {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  margin-top: 16px;
+}
+
+/* ── Org chart ─────────────────────────────────────────────────────────── */
+
+.rk-org {
+  overflow-x: auto;
+  padding: 8px 0 24px;
+}
+
+.rk-org ul {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.rk-org__root {
+  display: flex;
+  justify-content: center;
+}
+
+.rk-org__node {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  position: relative;
+  padding: 0 8px;
+}
+
+.rk-org__children {
+  display: flex;
+  justify-content: center;
+  padding-top: 14px !important;
+  position: relative;
+}
+
+/* Connectors: a vertical stub down from the parent, and a horizontal rail
+   plus a stub up to each child. */
+.rk-org__children::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 50%;
+  height: 14px;
+  border-left: 2px solid var(--rk-border);
+}
+
+.rk-org__children > .rk-org__node::before {
+  content: '';
+  position: absolute;
+  top: -14px;
+  left: 50%;
+  height: 14px;
+  border-left: 2px solid var(--rk-border);
+}
+
+.rk-org__children > .rk-org__node::after {
+  content: '';
+  position: absolute;
+  top: -14px;
+  left: 0;
+  right: 0;
+  border-top: 2px solid var(--rk-border);
+}
+
+.rk-org__children > .rk-org__node:first-child::after {
+  left: 50%;
+}
+
+.rk-org__children > .rk-org__node:last-child::after {
+  right: 50%;
+}
+
+.rk-org__children > .rk-org__node:only-child::after {
+  display: none;
+}
+
+.rk-org__children > .rk-org__node {
+  margin-top: 14px;
+}
+
+.rk-agent-card {
+  width: 220px;
+  background: var(--rk-surface);
+  border: 1px solid var(--rk-border);
+  border-radius: var(--rk-radius);
+  padding: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  transition: box-shadow var(--rk-duration), border-color var(--rk-duration);
+}
+
+.rk-agent-card:hover {
+  box-shadow: 0 4px 16px rgb(0 0 0 / 0.08);
+}
+
+.rk-agent-card--running {
+  border-color: var(--rk-accent);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--rk-accent) 20%, transparent);
+}
+
+.rk-agent-card--pending_approval {
+  border-style: dashed;
+  opacity: 0.8;
+}
+
+.rk-agent-card--paused,
+.rk-agent-card--error {
+  border-color: var(--rk-critical);
+}
+
+.rk-agent-card__body {
+  display: grid;
+  grid-template-columns: 36px 1fr 12px;
+  gap: 8px;
+  align-items: center;
+  border: 0;
+  background: none;
+  padding: 0;
+  font: inherit;
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.rk-agent-card__icon {
+  font-size: 1.6rem;
+}
+
+.rk-agent-card__text {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.rk-agent-card__text strong {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.rk-agent-card__meta {
+  display: flex;
+  gap: 4px;
+  flex-wrap: wrap;
+  align-items: center;
+}
+
+.rk-agent-card__hire {
+  border: 1px dashed var(--rk-accent);
+  border-radius: 6px;
+  background: transparent;
+  color: var(--rk-accent);
+  padding: 4px;
+  font: inherit;
+  font-size: 0.85rem;
+  cursor: pointer;
+}
+
+.rk-agent-card__hire:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--rk-accent) 8%, transparent);
+}
+
+.rk-agent-card__hire:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+.rk-dot {
+  display: inline-block;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: var(--rk-muted);
+  flex-shrink: 0;
+}
+
+.rk-dot--idle {
+  background: var(--rk-success);
+}
+.rk-dot--pending_approval {
+  background: var(--rk-warning);
+}
+.rk-dot--paused,
+.rk-dot--error {
+  background: var(--rk-critical);
+}
+.rk-dot--running {
+  background: var(--rk-accent);
+  animation: rk-pulse 1s ease-in-out infinite;
+}
+
+/* The pulse signals live work (a progress indicator), so it stays on. */
+@keyframes rk-pulse {
+  50% {
+    opacity: 0.35;
+  }
+}
+
+.rk-chip {
+  display: inline-block;
+  font-size: 0.75rem;
+  padding: 1px 8px;
+  border-radius: 999px;
+  background: var(--rk-bg);
+  border: 1px solid var(--rk-border);
+  color: var(--rk-muted);
+}
+
+.rk-chip--critical,
+.rk-chip--high {
+  border-color: var(--rk-critical);
+  color: var(--rk-critical);
+}
+
+/* ── Budget meter ──────────────────────────────────────────────────────── */
+
+.rk-budget {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.rk-budget__bar {
+  height: 6px;
+  background: color-mix(in srgb, var(--rk-muted) 20%, transparent);
+  border-radius: 999px;
+  overflow: hidden;
+}
+
+.rk-budget__fill {
+  height: 100%;
+  background: var(--rk-success);
+  transition: width var(--rk-duration);
+}
+
+.rk-budget__fill--warning {
+  background: var(--rk-warning);
+}
+.rk-budget__fill--critical {
+  background: var(--rk-critical);
+}
+
+.rk-budget__label {
+  font-size: 0.8rem;
+  color: var(--rk-muted);
+}
+
+/* ── Kanban ────────────────────────────────────────────────────────────── */
+
+.rk-kanban {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(220px, 1fr));
+  gap: var(--rk-gap);
+  overflow-x: auto;
+}
+
+.rk-kanban__col {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  background: color-mix(in srgb, var(--rk-muted) 6%, transparent);
+  border-radius: var(--rk-radius);
+  padding: 12px;
+  min-height: 200px;
+}
+
+.rk-issue-card {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 12px;
+  background: var(--rk-surface);
+  border: 1px solid var(--rk-border);
+  border-radius: 8px;
+  text-align: left;
+  font: inherit;
+  color: inherit;
+  cursor: pointer;
+}
+
+.rk-issue-card:hover {
+  border-color: var(--rk-accent);
+}
+
+.rk-issue-card--sub {
+  border-left: 3px solid color-mix(in srgb, var(--rk-accent) 40%, transparent);
+}
+
+.rk-issue-card__top,
+.rk-issue-card__bottom {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+  font-size: 0.85rem;
+}
+
+/* ── Drawers & forms ───────────────────────────────────────────────────── */
+
+.rk-drawer-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgb(0 0 0 / 0.35);
+  display: flex;
+  justify-content: flex-end;
+  z-index: 100;
+}
+
+.rk-drawer {
+  width: min(560px, 100vw);
+  height: 100%;
+  background: var(--rk-surface);
+  display: flex;
+  flex-direction: column;
+  box-shadow: -8px 0 32px rgb(0 0 0 / 0.15);
+}
+
+.rk-drawer--wide {
+  width: min(720px, 100vw);
+}
+
+.rk-drawer__header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 16px;
+  padding: 20px 24px 12px;
+  border-bottom: 1px solid var(--rk-border);
+}
+
+.rk-drawer__body {
+  padding: 20px 24px;
+  overflow-y: auto;
+  flex: 1;
+}
+
+.rk-drawer__footer {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  padding-top: 16px;
+}
+
+.rk-template-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+  gap: 12px;
+}
+
+.rk-template {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  align-items: flex-start;
+  padding: 14px;
+  border: 1px solid var(--rk-border);
+  border-radius: var(--rk-radius);
+  background: var(--rk-surface);
+  font: inherit;
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+  transition: border-color var(--rk-duration), transform var(--rk-duration);
+}
+
+.rk-template:hover {
+  border-color: var(--rk-accent);
+  transform: translateY(-2px);
+}
+
+.rk-template--blank {
+  border-style: dashed;
+}
+
+.rk-template__icon {
+  font-size: 1.8rem;
+}
+
+.rk-template__budget {
+  font-size: 0.8rem;
+  color: var(--rk-accent);
+  margin-top: auto;
+}
+
+.rk-form {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.rk-form__row {
+  display: flex;
+  gap: 12px;
+}
+
+.rk-form__row > .rk-field {
+  flex: 1;
+}
+
+.rk-field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  border: 0;
+  padding: 0;
+  margin: 0;
+}
+
+.rk-field--icon {
+  flex: 0 0 70px !important;
+}
+
+.rk-field > span,
+.rk-field > legend {
+  font-weight: 600;
+  font-size: 0.9rem;
+  margin-bottom: 4px;
+}
+
+.rk-field input:not([type='radio'], [type='checkbox']),
+.rk-field select,
+.rk-field textarea,
+.rk-textarea,
+.rk-comment textarea {
+  font: inherit;
+  padding: 8px 10px;
+  border: 1px solid var(--rk-border);
+  border-radius: 6px;
+  background: var(--rk-surface);
+  color: inherit;
+  width: 100%;
+  box-sizing: border-box;
+}
+
+.rk-field input:not([type='radio'], [type='checkbox']):focus-visible,
+.rk-field select:focus-visible,
+.rk-field textarea:focus-visible,
+.rk-textarea:focus-visible,
+.rk-comment textarea:focus-visible {
+  outline: 2px solid var(--rk-accent);
+  outline-offset: 1px;
+}
+
+.rk-radio {
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+  padding: 8px;
+  border: 1px solid var(--rk-border);
+  border-radius: 6px;
+  margin-bottom: 6px;
+  cursor: pointer;
+}
+
+.rk-radio:has(input:checked) {
+  border-color: var(--rk-accent);
+  background: color-mix(in srgb, var(--rk-accent) 5%, transparent);
+}
+
+.rk-radio--off {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.rk-radio input {
+  margin-top: 4px;
+}
+
+/* ── Issue detail ──────────────────────────────────────────────────────── */
+
+.rk-description {
+  white-space: pre-wrap;
+}
+
+.rk-working {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  color: var(--rk-accent);
+}
+
+.rk-list {
+  padding-left: 18px;
+}
+
+.rk-list li {
+  margin-bottom: 6px;
+}
+
+.rk-thread {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.rk-thread__item {
+  display: grid;
+  grid-template-columns: 32px 1fr;
+  gap: 10px;
+  padding: 10px 12px;
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--rk-muted) 6%, transparent);
+}
+
+.rk-thread__item--human {
+  background: color-mix(in srgb, var(--rk-accent) 8%, transparent);
+}
+
+.rk-thread__avatar {
+  font-size: 1.4rem;
+}
+
+.rk-thread__meta {
+  display: flex;
+  gap: 8px;
+  align-items: baseline;
+  margin: 0;
+}
+
+.rk-thread__body {
+  white-space: pre-wrap;
+  margin: 4px 0 0;
+}
+
+.rk-comment {
+  display: flex;
+  gap: 8px;
+  align-items: flex-end;
+  margin-top: 12px;
+}
+
+/* ── Agent & board ─────────────────────────────────────────────────────── */
+
+.rk-agent-head {
+  display: flex;
+  gap: 16px;
+  align-items: center;
+}
+
+.rk-agent-head__icon {
+  font-size: 3rem;
+}
+
+.rk-actions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.rk-dl {
+  display: grid;
+  grid-template-columns: max-content 1fr;
+  gap: 6px 16px;
+  margin: 0 0 16px;
+}
+
+.rk-dl dt {
+  color: var(--rk-muted);
+}
+
+.rk-dl dd {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.rk-pre {
+  white-space: pre-wrap;
+  font-size: 0.85rem;
+  background: var(--rk-bg);
+  padding: 12px;
+  border-radius: 6px;
+}
+
+.rk-runs {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.rk-run {
+  border-left: 3px solid var(--rk-border);
+  padding-left: 12px;
+}
+
+.rk-run__meta {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.rk-tools {
+  display: flex;
+  gap: 4px;
+  flex-wrap: wrap;
+}
+
+.rk-approval {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.rk-approval__header,
+.rk-approval__actions {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+details summary {
+  cursor: pointer;
+  color: var(--rk-accent);
+  margin: 8px 0;
+}
+
+/* ── Werktools & documenten ────────────────────────────────────────────── */
+
+.rk-radio .rk-tools {
+  margin-top: 6px;
+}
+
+.rk-docs {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 2fr);
+  gap: var(--rk-gap);
+  align-items: start;
+}
+
+@media (max-width: 900px) {
+  .rk-docs {
+    grid-template-columns: 1fr;
+  }
+}
+
+.rk-docs__list {
+  list-style: none;
+  margin: 12px 0 0;
+  padding: 0;
+}
+
+.rk-docs__list a {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 8px;
+  border-radius: 6px;
+  text-decoration: none;
+  color: var(--rk-text);
+}
+
+.rk-docs__list a:hover,
+.rk-docs__list a[aria-current='page'] {
+  background: color-mix(in srgb, var(--rk-accent) 7%, transparent);
+}
+
+.rk-docs__body {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  line-height: 1.55;
+  max-width: 75ch;
+}

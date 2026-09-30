@@ -1,0 +1,43 @@
+# Overlay: run Ollama in Docker too, and put every new hire on it.
+#
+#   docker compose -f docker-compose.yml -f docker-compose.ollama.yml up --build
+#
+# The first start pulls OLLAMA_MODEL (default qwen3:8b, ~5 GB) into a volume.
+# Docker on a Mac has no GPU access, so this is slow there; with Ollama
+# installed natively, set OLLAMA_BASE_URL=http://host.docker.internal:11434 in
+# .env and use plain `docker compose up` instead.
+services:
+  ollama:
+    image: ollama/ollama
+    environment:
+      # Tool schemas + org context need ~4k tokens before any work starts.
+      OLLAMA_CONTEXT_LENGTH: "16384"
+      OLLAMA_KEEP_ALIVE: 30m
+    volumes:
+      - ollama_data:/root/.ollama
+    healthcheck:
+      test: ["CMD", "ollama", "list"]
+      interval: 5s
+      retries: 30
+
+  ollama-pull:
+    image: ollama/ollama
+    environment:
+      OLLAMA_HOST: http://ollama:11434
+    entrypoint: ["ollama", "pull", "${OLLAMA_MODEL:-qwen3:8b}"]
+    depends_on:
+      ollama:
+        condition: service_healthy
+    restart: "no"
+
+  backend:
+    environment:
+      OLLAMA_BASE_URL: http://ollama:11434
+      OLLAMA_MODEL: ${OLLAMA_MODEL:-qwen3:8b}
+      AGENT_RUNTIME_DEFAULT: ollama
+    depends_on:
+      ollama-pull:
+        condition: service_completed_successfully
+
+volumes:
+  ollama_data:

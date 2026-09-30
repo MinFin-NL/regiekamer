@@ -1,0 +1,41 @@
+# Local run: http://localhost:8080. Uses the mock runtime unless .env configures
+# a model (see .env.example).
+#
+# Local models via Ollama, two ways:
+#   * Ollama installed on this machine (fastest on a Mac: it uses the GPU):
+#       OLLAMA_BASE_URL=http://host.docker.internal:11434 in .env
+#   * Ollama in Docker as well (no install needed, CPU only on a Mac):
+#       docker compose -f docker-compose.yml -f docker-compose.ollama.yml up --build
+services:
+  backend:
+    build:
+      context: .
+      dockerfile: Dockerfile.backend
+    env_file:
+      - path: .env
+        required: false
+    environment:
+      DB_PATH: /data/regiekamer.db
+      CORS_ORIGINS: http://localhost:8080
+    extra_hosts:
+      # Lets the backend reach an Ollama running on the host (Linux needs this;
+      # Docker Desktop has it built in).
+      - "host.docker.internal:host-gateway"
+    volumes:
+      - backend_data:/data
+      # az login credentials for the Foundry runtime (DefaultAzureCredential).
+      - ${HOME}/.azure:/root/.azure:ro
+
+  frontend:
+    build:
+      context: .
+      dockerfile: Dockerfile.frontend
+    environment:
+      BACKEND_URL: http://backend:8000
+    ports:
+      - "8080:80"
+    depends_on:
+      - backend
+
+volumes:
+  backend_data:
